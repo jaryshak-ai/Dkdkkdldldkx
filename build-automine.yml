@@ -1,0 +1,76 @@
+name: Build AutoMine
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Create pom.xml
+        id: proj
+        run: |
+          SRC=$(find . -name AutoMine.java -not -path './.git/*' | head -n 1)
+          if [ -z "$SRC" ]; then
+            echo "AutoMine.java не найден. Нужна папка src/main/java/ru/eclips/automine/ с файлом AutoMine.java. Содержимое репозитория:"
+            ls -R . | grep -v '^./.git'
+            exit 1
+          fi
+          PROJ=$(echo "$SRC" | sed 's#/src/main/java/.*##')
+          echo "Проект: $PROJ"
+          echo "dir=$PROJ" >> "$GITHUB_OUTPUT"
+          cat > "$PROJ/pom.xml" <<'POMEOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <project xmlns="http://maven.apache.org/POM/4.0.0"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>ru.eclips</groupId>
+              <artifactId>AutoMine</artifactId>
+              <version>1.0.0</version>
+              <packaging>jar</packaging>
+              <properties>
+                  <maven.compiler.source>17</maven.compiler.source>
+                  <maven.compiler.target>17</maven.compiler.target>
+                  <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+              </properties>
+              <repositories>
+                  <repository>
+                      <id>lanink-repo</id>
+                      <url>https://repo.lanink.cn/repository/maven-public/</url>
+                  </repository>
+              </repositories>
+              <dependencies>
+                  <dependency>
+                      <groupId>cn.nukkit</groupId>
+                      <artifactId>Nukkit</artifactId>
+                      <version>MOT-SNAPSHOT</version>
+                      <scope>provided</scope>
+                  </dependency>
+              </dependencies>
+              <build>
+                  <finalName>AutoMine</finalName>
+              </build>
+          </project>
+          POMEOF
+
+      - name: Build with Maven
+        run: mvn -B -f "${{ steps.proj.outputs.dir }}/pom.xml" clean package
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoMine
+          path: ${{ steps.proj.outputs.dir }}/target/AutoMine.jar
+          if-no-files-found: error
